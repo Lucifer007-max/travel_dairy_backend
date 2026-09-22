@@ -37,12 +37,14 @@ const schema = z
     VERCEL: z.string().optional(),
   })
   .superRefine((c, ctx) => {
-    if (c.STORAGE_DRIVER === 'supabase' && (!c.SUPABASE_URL || !c.SUPABASE_SERVICE_ROLE_KEY)) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['STORAGE_DRIVER'],
-        message: 'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required when STORAGE_DRIVER=supabase',
-      });
+    if (c.STORAGE_DRIVER === 'supabase') {
+      // Name the missing one exactly; on Vercel a variable set for only one
+      // environment looks "added" in the dashboard but is missing here.
+      for (const key of ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY']) {
+        if (!c[key]) {
+          ctx.addIssue({ code: 'custom', path: [key], message: 'is required when STORAGE_DRIVER=supabase' });
+        }
+      }
     }
     if (c.VERCEL && c.STORAGE_DRIVER === 'local') {
       ctx.addIssue({

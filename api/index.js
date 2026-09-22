@@ -17,5 +17,17 @@ export default function handler(req, res) {
   if (app) return app(req, res);
   res.statusCode = 500;
   res.setHeader('Content-Type', 'application/json');
-  res.end(JSON.stringify({ error: { code: 'server_misconfigured', message: startupError.message } }));
+  res.end(
+    JSON.stringify({
+      error: {
+        code: 'server_misconfigured',
+        message: startupError.message,
+        // Which deployment this is: a variable added for Production only is
+        // missing on preview deployments. Add it for every environment and redeploy.
+        environment: process.env.VERCEL_ENV ?? 'unknown',
+        settingsSeen: ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'DATABASE_URL', 'JWT_SECRET', 'GOOGLE_CLIENT_IDS']
+          .filter((k) => process.env[k]),
+      },
+    }),
+  );
 }
