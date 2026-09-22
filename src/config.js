@@ -25,7 +25,7 @@ const schema = z
     STORAGE_DRIVER: z.enum(['supabase', 'local']).default('local'),
     SUPABASE_URL: z.url().optional(),
     SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
-    SUPABASE_BUCKET: z.string().default('photos'),
+    SUPABASE_BUCKET: z.string().trim().min(1, 'cannot be blank').default('photos'),
     LOCAL_STORAGE_DIR: z.string().default('./uploads'),
     PUBLIC_BASE_URL: z.url().optional(),
     SIGNED_URL_TTL_SECONDS: z.coerce.number().int().positive().default(86_400),

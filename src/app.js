@@ -32,7 +32,15 @@ export function createApp({ config, pool, storage, verifyGoogleIdToken, logger }
 
   app.get('/health', async (_req, res) => {
     await pool.query('select 1');
-    res.json({ ok: true });
+    // Where this deployment stores photos, so it can be compared with the
+    // Supabase dashboard. None of this is secret.
+    res.json({
+      ok: true,
+      storage: storage.driver,
+      ...(storage.driver === 'supabase'
+        ? { bucket: config.SUPABASE_BUCKET, project: new URL(config.SUPABASE_URL).hostname }
+        : {}),
+    });
   });
 
   const v1 = express.Router();

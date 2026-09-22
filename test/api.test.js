@@ -60,7 +60,8 @@ describe('health', () => {
   test('reports ok when the database answers', async () => {
     const res = await api().get('/health');
     assert.equal(res.status, 200);
-    assert.deepEqual(res.body, { ok: true });
+    assert.equal(res.body.ok, true);
+    assert.equal(res.body.storage, 'local');
   });
 });
 
