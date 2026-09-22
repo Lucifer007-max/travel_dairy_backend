@@ -1,0 +1,35 @@
+{
+  "name": "traveldiary-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "API for TravelDiary: accounts, trips, memories and photos on Supabase (Postgres + Storage).",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "dev": "node --watch --env-file-if-exists=.env src/server.js",
+    "migrate": "node --env-file-if-exists=.env scripts/migrate.js",
+    "setup:storage": "node --env-file-if-exists=.env scripts/setup-storage.js",
+    "test": "node --env-file-if-exists=.env.test --test --test-concurrency=1 \"test/**/*.test.js\"",
+    "copy-data": "node --env-file-if-exists=.env scripts/copy-data.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.116.0",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "google-auth-library": "^11.1.0",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.4.0",
+    "pg": "^8.23.0",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "supertest": "^7.2.2"
+  }
+}
