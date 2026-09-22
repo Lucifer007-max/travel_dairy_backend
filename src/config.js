@@ -32,6 +32,9 @@ const schema = z
     MAX_UPLOAD_MB: z.coerce.number().positive().default(15),
 
     CORS_ORIGINS: list,
+
+    // Set by Vercel on its servers.
+    VERCEL: z.string().optional(),
   })
   .superRefine((c, ctx) => {
     if (c.STORAGE_DRIVER === 'supabase' && (!c.SUPABASE_URL || !c.SUPABASE_SERVICE_ROLE_KEY)) {
@@ -39,6 +42,13 @@ const schema = z
         code: 'custom',
         path: ['STORAGE_DRIVER'],
         message: 'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required when STORAGE_DRIVER=supabase',
+      });
+    }
+    if (c.VERCEL && c.STORAGE_DRIVER === 'local') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['STORAGE_DRIVER'],
+        message: 'must be "supabase" on Vercel (its file system is read-only); also set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY',
       });
     }
     if (c.SUPABASE_SERVICE_ROLE_KEY && isPublicSupabaseKey(c.SUPABASE_SERVICE_ROLE_KEY)) {

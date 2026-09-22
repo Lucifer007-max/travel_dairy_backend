@@ -41,6 +41,27 @@ host works (Render, Fly.io, Railway, Cloud Run…). Set the same environment var
 `PUBLIC_BASE_URL` set to the public HTTPS address. Build the app against it with
 `flutter build apk --dart-define=API_BASE_URL=https://your-api.example.com`.
 
+## Deploy to Vercel
+
+`api/index.js` is the Vercel entry point and `vercel.json` sends every path to it, so no
+framework preset is needed. In the Vercel project → **Settings → Environment Variables**, add the
+same values as your `.env` (Vercel never sees `.env`):
+
+| Variable | Value |
+|---|---|
+| `DATABASE_URL` | Supabase **Transaction pooler** URI (port `6543`), best for serverless; the Session pooler (`5432`) also works |
+| `DATABASE_SSL` | `true` |
+| `JWT_SECRET` | the same long random string as in `.env` |
+| `GOOGLE_CLIENT_IDS` | the **Web** OAuth client ID |
+| `STORAGE_DRIVER` | `supabase` (local storage can't work on Vercel) |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | project URL and **secret** key |
+
+Redeploy after changing variables. If a setting is missing or wrong, every request answers with a
+`server_misconfigured` JSON error naming it (never its value). Run `npm run migrate` against the
+Supabase database from your machine; Vercel doesn't run migrations. Vercel limits request bodies
+to 4.5 MB, so very large photos are refused there. Build the app against the deployment with
+`--dart-define=API_BASE_URL=https://<your-project>.vercel.app`.
+
 ## API
 
 All routes are under `/v1` and return JSON. Errors are always

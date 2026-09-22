@@ -1,23 +1,7 @@
-import pino from 'pino';
+import { buildApp } from './bootstrap.js';
 
-import { createApp } from './app.js';
-import { createGoogleVerifier } from './auth/google.js';
-import { loadConfig } from './config.js';
-import { createPool } from './db.js';
-import { createStorage } from './storage/index.js';
-
-const config = loadConfig();
-const logger = pino({ level: config.LOG_LEVEL });
-const pool = createPool(config);
-const storage = createStorage(config);
-
-const app = createApp({
-  config,
-  pool,
-  storage,
-  verifyGoogleIdToken: createGoogleVerifier(config),
-  logger,
-});
+// A long-running server (npm start, Docker). On Vercel, api/index.js is used instead.
+const { app, config, pool, storage, logger } = buildApp();
 
 const server = app.listen(config.PORT, () => {
   logger.info(

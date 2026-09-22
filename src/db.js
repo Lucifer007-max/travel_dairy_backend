@@ -8,7 +8,8 @@ export function createPool(config) {
     connectionString: config.DATABASE_URL,
     // Supabase requires TLS; its pooler certificates aren't in Node's default CA list.
     ssl: config.DATABASE_SSL ? { rejectUnauthorized: false } : undefined,
-    max: 10,
+    // Serverless platforms run many small copies; keep each one's share small.
+    max: config.VERCEL ? 3 : 10,
     idleTimeoutMillis: 30_000,
   });
 }

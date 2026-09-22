@@ -47,6 +47,11 @@ test('a public Supabase key is refused with a clear explanation', () => {
   assert.doesNotThrow(withKey('sb_secret_abc123'));
 });
 
+test('local photo storage is refused on Vercel', () => {
+  assert.throws(() => loadConfig({ ...base, VERCEL: '1' }), /must be "supabase" on Vercel/);
+  assert.doesNotThrow(() => loadConfig({ ...base }));
+});
+
 test('image types are recognised from their bytes', () => {
   assert.equal(detectImageType(Buffer.from([0xff, 0xd8, 0xff, 0xe1, ...Array(20).fill(0)]))?.extension, 'jpg');
   assert.equal(detectImageType(Buffer.from('RIFF\0\0\0\0WEBPVP8 ', 'latin1'))?.extension, 'webp');
