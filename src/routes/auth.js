@@ -22,6 +22,15 @@ export function authRouter({ pool, tokens, verifyGoogleIdToken }) {
       [google.sub, google.email, name, google.picture],
     );
 
+    // Trips shared with this email before they had an account are theirs now.
+    if (rows[0].email) {
+      await pool.query(
+        `update trip_members set user_id = $1, joined_at = coalesce(joined_at, now())
+          where user_id is null and email = lower($2)`,
+        [rows[0].id, rows[0].email],
+      );
+    }
+
     res.json({ token: tokens.issue(rows[0].id), user: serializeUser(rows[0]) });
   });
 

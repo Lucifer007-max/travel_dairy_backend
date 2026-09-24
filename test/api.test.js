@@ -266,6 +266,111 @@ describe('memories and photos', () => {
   });
 });
 
+describe('sharing a trip', () => {
+  const share = (token, tripId, email) =>
+    api().post(`/v1/trips/${tripId}/members`).set(auth(token)).send({ email });
+  const emailOf = async (token) => (await api().get('/v1/me').set(auth(token))).body.user.email;
+
+  test('only the trip it was shared for shows up for the other person', async () => {
+    const owner = await session();
+    const shared = await createTrip(owner, { title: 'Goa' });
+    const private_ = await createTrip(owner, { title: 'Manali' });
+
+    const res = await share(owner, shared.id, 'Friend@Example.com');
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    assert.deepEqual(
+      res.body.members.map((m) => [m.email, m.joined]),
+      [['friend@example.com', false]],
+      'invitations wait, in one case, until that person signs in',
+    );
+
+    const { token: friend } = await google('g-friend', 'friend@example.com', 'Ravi');
+    const { trips } = (await api().get('/v1/trips').set(auth(friend))).body;
+    assert.deepEqual(trips.map((t) => t.title), ['Goa']);
+    assert.equal(trips[0].isOwner, false);
+    assert.equal(trips[0].owner.email, await emailOf(owner));
+    assert.equal((await api().get(`/v1/trips/${private_.id}`).set(auth(friend))).status, 404);
+
+    // The owner sees who it is shared with, now that they have joined.
+    const members = (await api().get(`/v1/trips/${shared.id}/members`).set(auth(owner))).body.members;
+    assert.deepEqual(members.map((m) => [m.email, m.name, m.joined]), [['friend@example.com', 'Ravi', true]]);
+  });
+
+  test('someone sharing the trip can add memories but not change the trip itself', async () => {
+    const owner = await session();
+    const trip = await createTrip(owner);
+    const { token: friend } = await google('g-friend', 'friend@example.com', 'Ravi');
+    await share(owner, trip.id, 'friend@example.com');
+
+    const added = await addMemory(friend, trip.id, { happenedAt: '2026-06-14T10:00:00Z', note: 'Sunset' });
+    assert.equal(added.status, 201, JSON.stringify(added.body));
+    const ours = (await api().get(`/v1/trips/${trip.id}`).set(auth(owner))).body.trip;
+    assert.deepEqual(ours.memories.map((m) => m.note), ['Sunset']);
+
+    assert.equal((await api().patch(`/v1/trips/${trip.id}`).set(auth(friend)).send({ title: 'Mine' })).status, 403);
+    assert.equal((await api().delete(`/v1/trips/${trip.id}`).set(auth(friend))).status, 403);
+    assert.equal((await share(friend, trip.id, 'someone@example.com')).status, 403);
+  });
+
+  test("a memory belongs to whoever added it: no one else can change it", async () => {
+    const owner = await session();
+    const trip = await createTrip(owner);
+    const { token: friend } = await google('g-friend', 'friend@example.com', 'Ravi');
+    await share(owner, trip.id, 'friend@example.com');
+
+    const theirs = (await addMemory(friend, trip.id, { happenedAt: '2026-06-14T10:00:00Z', note: 'Theirs' })).body
+      .memory;
+    const mine = (await addMemory(owner, trip.id, { happenedAt: '2026-06-15T10:00:00Z', note: 'Mine' })).body.memory;
+
+    assert.equal((await api().patch(`/v1/memories/${mine.id}`).set(auth(friend)).send({ note: 'x' })).status, 403);
+    assert.equal((await api().delete(`/v1/memories/${theirs.id}`).set(auth(friend))).status, 204, 'their own');
+    assert.equal((await api().delete(`/v1/memories/${mine.id}`).set(auth(owner))).status, 204, 'the owner may');
+  });
+
+  test('people can be removed, and can leave a trip themselves', async () => {
+    const owner = await session();
+    const trip = await createTrip(owner);
+    const { token: friend } = await google('g-friend', 'friend@example.com', 'Ravi');
+    const { token: other } = await google('g-other', 'other@example.com', 'Sam');
+    await share(owner, trip.id, 'friend@example.com');
+    await share(owner, trip.id, 'other@example.com');
+
+    const members = (await api().get(`/v1/trips/${trip.id}/members`).set(auth(owner))).body.members;
+    const [ravi, sam] = members;
+
+    // One person can't remove another.
+    assert.equal((await api().delete(`/v1/trips/${trip.id}/members/${sam.id}`).set(auth(friend))).status, 403);
+    // But can leave.
+    assert.equal((await api().delete(`/v1/trips/${trip.id}/members/${ravi.id}`).set(auth(friend))).status, 204);
+    assert.equal((await api().get(`/v1/trips/${trip.id}`).set(auth(friend))).status, 404);
+
+    // And the owner can remove anyone.
+    assert.equal((await api().delete(`/v1/trips/${trip.id}/members/${sam.id}`).set(auth(owner))).status, 204);
+    assert.equal((await api().get('/v1/trips').set(auth(other))).body.trips.length, 0);
+    assert.deepEqual((await api().get(`/v1/trips/${trip.id}/members`).set(auth(owner))).body.members, []);
+  });
+
+  test('sharing twice changes nothing, and a trip cannot be shared with yourself', async () => {
+    const owner = await session();
+    const trip = await createTrip(owner);
+    assert.equal((await share(owner, trip.id, 'friend@example.com')).status, 201);
+    const again = await share(owner, trip.id, 'FRIEND@example.com');
+    assert.equal(again.status, 200);
+    assert.equal(again.body.members.length, 1);
+    assert.equal((await share(owner, trip.id, await emailOf(owner))).status, 400, 'their own address');
+    assert.equal((await share(owner, trip.id, 'not-an-email')).status, 400);
+  });
+
+  test('deleting a trip takes the sharing with it', async () => {
+    const owner = await session();
+    const trip = await createTrip(owner);
+    await share(owner, trip.id, 'friend@example.com');
+    assert.equal((await api().delete(`/v1/trips/${trip.id}`).set(auth(owner))).status, 204);
+    const { rows } = await ctx.pool.query('select count(*)::int as n from trip_members');
+    assert.equal(rows[0].n, 0);
+  });
+});
+
 describe('deleting the account', () => {
   test('removes the person, their trips and their photo files', async () => {
     const token = await session();

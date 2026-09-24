@@ -74,3 +74,8 @@ export const memoryUpdate = z
     place: place.nullish(),
   })
   .refine((m) => Object.keys(m).length > 0, 'Nothing to change.');
+
+/** Sharing a trip with one person, by the email on their Google account. */
+export const memberInvite = z.object({
+  email: z.email({ message: 'Enter an email address.' }).max(320),
+});

@@ -70,20 +70,39 @@ Everything except sign-in needs `Authorization: Bearer <token>`.
 
 | Method & path | What it does |
 | --- | --- |
-| `POST /v1/auth/google` `{ idToken }` | Sign in with a Google ID token. A guest session sent along has its trips moved over. |
-| `POST /v1/auth/guest` | Start a guest account. |
+| `POST /v1/auth/google` `{ idToken }` | Sign in with a Google ID token; the first time creates the account. Accounts are Google-only. |
 | `GET /v1/me` · `PATCH /v1/me` `{ name }` · `DELETE /v1/me` | The account; delete removes everything, photos included. |
-| `GET /v1/trips` | Every trip, newest first, with memories and signed photo links. |
+| `GET /v1/trips` | Every trip they can see — their own and ones shared with them — newest first, with memories and signed photo links. |
 | `POST /v1/trips` `{ title, destination, kind, startDate, endDate }` | New trip (`kind`: beach, mountains, city, roadTrip, other). |
 | `GET · PATCH · DELETE /v1/trips/:id` | One trip. `PATCH` also takes `coverPhotoId`. |
 | `POST /v1/trips/:id/memories` | New memory. Multipart: `data` (JSON) + `photos` files in the same order as `data.photos`. |
 | `PATCH · DELETE /v1/memories/:id` | Edit or remove a memory. |
 | `DELETE /v1/photos/:id` | Remove one photo. |
+| `GET /v1/trips/:id/members` | Who this trip is shared with. |
+| `POST /v1/trips/:id/members` `{ email }` | Share this one trip with that person (owner only). |
+| `DELETE /v1/trips/:id/members/:memberId` | Take someone off (owner), or leave the trip (yourself). |
 | `GET /health` | Database check for uptime monitors. |
 
 A memory's `data`: `{ title?, note?, emoji?, happenedAt, place?: { name, latitude?, longitude? },
 photos: [{ takenAt?, place? }] }`. Times are ISO 8601 with a timezone. Photos must really be JPEG,
 PNG, WebP or HEIC (checked from the file's bytes), up to `MAX_UPLOAD_MB` each and 30 per memory.
+
+## Sharing a trip
+
+A trip can be shared with the people who were on it, one trip at a time — the rest stay private.
+It is shared by the email address on someone's Google account, so they can be added before they
+have ever opened the app: the row in `trip_members` waits with `user_id` null and is claimed at
+their next Google sign-in (`src/routes/auth.js`). Nothing is emailed and no link is created;
+the trip simply appears in their list.
+
+Who may do what:
+
+- **Owner**: everything — rename, delete, set the cover, add and remove people, edit any memory.
+- **Shared with**: see the trip and add their own memories and photos to it; edit and delete only
+  what they added (`memories.created_by`); leave the trip by removing themselves.
+
+Each trip is read through one visibility rule in `src/trips.js` (`VISIBLE` / `tripAccess`), so a
+route can't forget it.
 
 ## Layout
 
@@ -94,7 +113,7 @@ src/
   config.js         environment settings, checked at startup
   db.js, migrate.js Postgres pool, transactions, migrations
   schemas.js        request validation (zod)
-  trips.js          reading trips out in the app's shape
+  trips.js          reading trips out in the app's shape, and who may see one
   auth/             Google ID token checks, session tokens
   routes/           auth, me, trips, memories, files
   storage/          Supabase Storage and local-disk drivers

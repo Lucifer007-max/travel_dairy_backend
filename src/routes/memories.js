@@ -4,10 +4,10 @@ import { Router } from 'express';
 import multer from 'multer';
 
 import { withTransaction } from '../db.js';
-import { badRequest, HttpError, notFound } from '../errors.js';
+import { badRequest, forbidden, HttpError, notFound } from '../errors.js';
 import { id, memoryCreate, memoryUpdate } from '../schemas.js';
 import { detectImageType } from '../storage/images.js';
-import { loadTrips, photoKeys } from '../trips.js';
+import { loadTrips, photoKeys, tripAccess } from '../trips.js';
 
 const MAX_PHOTOS = 30;
 
@@ -18,18 +18,23 @@ export function memoriesRouter({ pool, storage, config }) {
     limits: { fileSize: config.MAX_UPLOAD_MB * 1024 * 1024, files: MAX_PHOTOS, fields: 5 },
   }).array('photos', MAX_PHOTOS);
 
-  async function ownedTrip(userId, tripId) {
-    const { rows } = await pool.query('select id from trips where id = $1 and user_id = $2', [tripId, userId]);
-    if (!rows[0]) throw notFound('That trip was not found.');
-  }
-
-  async function ownedMemory(userId, memoryId) {
+  /**
+   * A memory on a trip the person can see. Everyone sharing a trip may add
+   * memories, but only the trip's owner and whoever wrote a memory may change
+   * or remove it.
+   */
+  async function editableMemory(user, memoryId) {
     const { rows } = await pool.query(
-      'select m.* from memories m join trips t on t.id = m.trip_id where m.id = $1 and t.user_id = $2',
-      [memoryId, userId],
+      'select m.*, t.user_id as trip_owner_id from memories m join trips t on t.id = m.trip_id where m.id = $1',
+      [memoryId],
     );
-    if (!rows[0]) throw notFound('That memory was not found.');
-    return rows[0];
+    const memory = rows[0];
+    if (!memory) throw notFound('That memory was not found.');
+    const { isOwner } = await tripAccess(pool, user, memory.trip_id);
+    if (!isOwner && memory.created_by !== user.id) {
+      throw forbidden('This memory was added by someone else on the trip.');
+    }
+    return memory;
   }
 
   /**
@@ -53,7 +58,7 @@ export function memoriesRouter({ pool, storage, config }) {
     if (input.photos.length > 0 && input.photos.length !== files.length) {
       throw badRequest(`Got ${files.length} photos but details for ${input.photos.length}.`);
     }
-    await ownedTrip(req.user.id, tripId);
+    await tripAccess(pool, req.user, tripId);
 
     const memoryId = randomUUID();
     const photos = files.map((file, position) => {
@@ -80,11 +85,13 @@ export function memoriesRouter({ pool, storage, config }) {
       }
       await withTransaction(pool, async (db) => {
         await db.query(
-          `insert into memories (id, trip_id, title, note, emoji, happened_at, place_name, latitude, longitude)
-           values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          `insert into memories (id, trip_id, created_by, title, note, emoji, happened_at,
+                                 place_name, latitude, longitude)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
           [
             memoryId,
             tripId,
+            req.user.id,
             input.title,
             input.note,
             input.emoji,
@@ -121,12 +128,12 @@ export function memoriesRouter({ pool, storage, config }) {
       throw error;
     }
 
-    const [trip] = await loadTrips(pool, storage, req.user.id, { tripId });
+    const [trip] = await loadTrips(pool, storage, req.user, { tripId });
     res.status(201).json({ memory: trip.memories.find((m) => m.id === memoryId), trip });
   });
 
   router.patch('/memories/:memoryId', async (req, res) => {
-    const memory = await ownedMemory(req.user.id, id.parse(req.params.memoryId));
+    const memory = await editableMemory(req.user, id.parse(req.params.memoryId));
     const changes = memoryUpdate.parse(req.body);
 
     const columns = {};
@@ -145,12 +152,12 @@ export function memoriesRouter({ pool, storage, config }) {
         [memory.id, ...entries.map(([, v]) => v)],
       );
     }
-    const [trip] = await loadTrips(pool, storage, req.user.id, { tripId: memory.trip_id });
+    const [trip] = await loadTrips(pool, storage, req.user, { tripId: memory.trip_id });
     res.json({ memory: trip.memories.find((m) => m.id === memory.id), trip });
   });
 
   router.delete('/memories/:memoryId', async (req, res) => {
-    const memory = await ownedMemory(req.user.id, id.parse(req.params.memoryId));
+    const memory = await editableMemory(req.user, id.parse(req.params.memoryId));
     const keys = await photoKeys(pool, 'm.id = $1', [memory.id]);
     await pool.query('delete from memories where id = $1', [memory.id]);
     await storage.remove(keys).catch((err) => req.log?.warn({ err }, 'could not remove photo files'));
@@ -159,12 +166,11 @@ export function memoriesRouter({ pool, storage, config }) {
 
   router.delete('/photos/:photoId', async (req, res) => {
     const photoId = id.parse(req.params.photoId);
-    const { rows } = await pool.query(
-      `delete from photos p using memories m, trips t
-        where p.id = $1 and m.id = p.memory_id and t.id = m.trip_id and t.user_id = $2
-        returning p.storage_path`,
-      [photoId, req.user.id],
-    );
+    const { rows: found } = await pool.query('select memory_id from photos where id = $1', [photoId]);
+    if (!found[0]) throw notFound('That photo was not found.');
+    await editableMemory(req.user, found[0].memory_id);
+
+    const { rows } = await pool.query('delete from photos where id = $1 returning storage_path', [photoId]);
     if (!rows[0]) throw notFound('That photo was not found.');
     await storage.remove([rows[0].storage_path]).catch((err) => req.log?.warn({ err }, 'could not remove photo file'));
     res.status(204).end();
