@@ -79,3 +79,9 @@ export const memoryUpdate = z
 export const memberInvite = z.object({
   email: z.email({ message: 'Enter an email address.' }).max(320),
 });
+
+/** A phone to push notifications to. */
+export const deviceRegistration = z.object({
+  token: z.string().trim().min(10).max(4096),
+  platform: z.enum(['android', 'ios', 'web']).default('android'),
+});

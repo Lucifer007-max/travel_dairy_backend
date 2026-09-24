@@ -78,6 +78,9 @@ Everything except sign-in needs `Authorization: Bearer <token>`.
 | `POST /v1/trips/:id/memories` | New memory. Multipart: `data` (JSON) + `photos` files in the same order as `data.photos`. |
 | `PATCH · DELETE /v1/memories/:id` | Edit or remove a memory. |
 | `DELETE /v1/photos/:id` | Remove one photo. |
+| `GET /v1/notifications` | What has happened to them, newest first, with the unread count. |
+| `POST /v1/notifications/read` `{ ids? }` | Mark them read; all of them when `ids` is left out. |
+| `POST · DELETE /v1/me/devices` `{ token, platform }` | Register this phone for pushes, or stop them. |
 | `GET /v1/trips/:id/members` | Who this trip is shared with. |
 | `POST /v1/trips/:id/members` `{ email }` | Share this one trip with that person (owner only). |
 | `DELETE /v1/trips/:id/members/:memberId` | Take someone off (owner), or leave the trip (yourself). |
@@ -104,6 +107,26 @@ Who may do what:
 Each trip is read through one visibility rule in `src/trips.js` (`VISIBLE` / `tripAccess`), so a
 route can't forget it.
 
+## Push notifications
+
+When a trip is shared with someone, they are told: a row in `notifications` (which the app lists,
+and which survives a phone being off) and, when Firebase is configured, a push to their phones.
+Someone invited before they had an account is told the moment they sign in and the invitation is
+claimed.
+
+Push is optional — without it everything still works, people just see the notification the next
+time they open the app. To turn it on:
+
+1. Firebase console → **Project settings → Service accounts → Generate new private key**.
+2. Put that JSON in `FIREBASE_SERVICE_ACCOUNT`, on one line or base64-encoded (`base64 -i key.json`
+   is easier to paste into Vercel). It is a **secret**: never commit it.
+3. `GET /health` then reports `"push": true`.
+
+Phones register themselves with `POST /v1/me/devices` after signing in and forget themselves at
+sign-out. A token Firebase reports as unknown (the app was uninstalled) is deleted automatically.
+`src/notify.js` holds all of this; it never throws, so failing to notify can't fail the thing that
+happened.
+
 ## Layout
 
 ```text
@@ -114,6 +137,7 @@ src/
   db.js, migrate.js Postgres pool, transactions, migrations
   schemas.js        request validation (zod)
   trips.js          reading trips out in the app's shape, and who may see one
+  notify.js         recording notifications and pushing them through Firebase
   auth/             Google ID token checks, session tokens
   routes/           auth, me, trips, memories, files
   storage/          Supabase Storage and local-disk drivers

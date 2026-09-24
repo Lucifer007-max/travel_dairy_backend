@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { googleSignIn } from '../schemas.js';
 import { serializeUser } from '../trips.js';
 
-export function authRouter({ pool, tokens, verifyGoogleIdToken }) {
+export function authRouter({ pool, tokens, verifyGoogleIdToken, notifier }) {
   const router = Router();
 
   // Sign in with a Google ID token from the app. Accounts are Google-only:
@@ -22,13 +22,29 @@ export function authRouter({ pool, tokens, verifyGoogleIdToken }) {
       [google.sub, google.email, name, google.picture],
     );
 
-    // Trips shared with this email before they had an account are theirs now.
+    // Trips shared with this email before they had an account are theirs now,
+    // and they are told about each one.
     if (rows[0].email) {
-      await pool.query(
+      const { rows: claimed } = await pool.query(
         `update trip_members set user_id = $1, joined_at = coalesce(joined_at, now())
-          where user_id is null and email = lower($2)`,
+          where user_id is null and email = lower($2)
+          returning trip_id`,
         [rows[0].id, rows[0].email],
       );
+      for (const { trip_id: tripId } of claimed) {
+        const { rows: trips } = await pool.query(
+          'select t.title, u.name as owner from trips t join users u on u.id = t.user_id where t.id = $1',
+          [tripId],
+        );
+        if (!trips[0]) continue;
+        await notifier?.notify({
+          userId: rows[0].id,
+          kind: 'trip_shared',
+          title: `${trips[0].owner} added you to a trip`,
+          body: `You can now see "${trips[0].title}" and add your own memories to it.`,
+          tripId,
+        });
+      }
     }
 
     res.json({ token: tokens.issue(rows[0].id), user: serializeUser(rows[0]) });

@@ -371,6 +371,62 @@ describe('sharing a trip', () => {
   });
 });
 
+describe('notifications', () => {
+  test('being added to a trip is recorded for that person, and can be marked read', async () => {
+    const owner = await session();
+    const trip = await createTrip(owner, { title: 'Goa' });
+    const { token: friend } = await google('g-friend', 'friend@example.com', 'Ravi');
+
+    await api().post(`/v1/trips/${trip.id}/members`).set(auth(owner)).send({ email: 'friend@example.com' });
+
+    const { body } = await api().get('/v1/notifications').set(auth(friend));
+    assert.equal(body.unread, 1);
+    assert.equal(body.notifications[0].kind, 'trip_shared');
+    assert.match(body.notifications[0].title, /added you to a trip$/);
+    assert.match(body.notifications[0].body, /Goa/);
+    assert.equal(body.notifications[0].tripId, trip.id);
+    assert.equal(body.notifications[0].read, false);
+
+    // Nobody else is told.
+    assert.equal((await api().get('/v1/notifications').set(auth(owner))).body.notifications.length, 0);
+
+    assert.equal((await api().post('/v1/notifications/read').set(auth(friend))).status, 204);
+    const after = await api().get('/v1/notifications').set(auth(friend));
+    assert.equal(after.body.unread, 0);
+    assert.equal(after.body.notifications[0].read, true);
+  });
+
+  test('someone invited before they had an account is told when they sign in', async () => {
+    const owner = await session();
+    const trip = await createTrip(owner, { title: 'Manali' });
+    await api().post(`/v1/trips/${trip.id}/members`).set(auth(owner)).send({ email: 'later@example.com' });
+
+    const { token } = await google('g-later', 'later@example.com', 'Sam');
+    const { body } = await api().get('/v1/notifications').set(auth(token));
+    assert.equal(body.unread, 1);
+    assert.match(body.notifications[0].body, /Manali/);
+
+    // Signing in again doesn't tell them twice.
+    await google('g-later', 'later@example.com', 'Sam');
+    assert.equal((await api().get('/v1/notifications').set(auth(token))).body.notifications.length, 1);
+  });
+
+  test('a phone can be registered for pushes and forgotten again', async () => {
+    const token = await session();
+    const device = { token: 'fcm-token-1234567890', platform: 'android' };
+
+    assert.equal((await api().post('/v1/me/devices').set(auth(token)).send(device)).status, 204);
+    assert.equal((await api().post('/v1/me/devices').set(auth(token)).send(device)).status, 204, 'twice is fine');
+    const { rows } = await ctx.pool.query('select count(*)::int as n from device_tokens');
+    assert.equal(rows[0].n, 1);
+
+    assert.equal((await api().delete('/v1/me/devices').set(auth(token)).send(device)).status, 204);
+    const after = await ctx.pool.query('select count(*)::int as n from device_tokens');
+    assert.equal(after.rows[0].n, 0);
+    assert.equal((await api().post('/v1/me/devices').set(auth(token)).send({ token: 'short' })).status, 400);
+  });
+});
+
 describe('deleting the account', () => {
   test('removes the person, their trips and their photo files', async () => {
     const token = await session();

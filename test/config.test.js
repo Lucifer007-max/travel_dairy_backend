@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { loadConfig } from '../src/config.js';
+import { parseServiceAccount } from '../src/notify.js';
 import { detectImageType } from '../src/storage/images.js';
 
 const base = { DATABASE_URL: 'postgres://localhost/x', JWT_SECRET: 'x'.repeat(32) };
@@ -50,6 +51,19 @@ test('a public Supabase key is refused with a clear explanation', () => {
 test('local photo storage is refused on Vercel', () => {
   assert.throws(() => loadConfig({ ...base, VERCEL: '1' }), /must be "supabase" on Vercel/);
   assert.doesNotThrow(() => loadConfig({ ...base }));
+});
+
+test('the Firebase service account is checked at startup, in either form', () => {
+  const account = { project_id: 'td', client_email: 'push@td.iam.gserviceaccount.com', private_key: 'a\\nb' };
+  const json = JSON.stringify(account);
+  assert.equal(parseServiceAccount(json).privateKey, 'a\nb', 'escaped newlines are unescaped');
+  assert.equal(parseServiceAccount(Buffer.from(json).toString('base64')).projectId, 'td');
+  assert.equal(parseServiceAccount(''), null, 'push is optional');
+  assert.throws(() => parseServiceAccount('not json'), /must be the service account JSON/);
+  assert.throws(() => parseServiceAccount('{"project_id":"td"}'), /missing project_id, client_email or private_key/);
+
+  assert.doesNotThrow(() => loadConfig({ ...base, FIREBASE_SERVICE_ACCOUNT: json }));
+  assert.throws(() => loadConfig({ ...base, FIREBASE_SERVICE_ACCOUNT: '{}' }), /FIREBASE_SERVICE_ACCOUNT/);
 });
 
 test('image types are recognised from their bytes', () => {

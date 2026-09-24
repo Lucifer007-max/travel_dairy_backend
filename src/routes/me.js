@@ -1,5 +1,6 @@
 import { Router } from 'express';
 
+import { deviceRegistration } from '../schemas.js';
 import { profileUpdate } from '../schemas.js';
 import { photoKeys, serializeUser } from '../trips.js';
 
@@ -17,6 +18,27 @@ export function meRouter({ pool, storage }) {
       name,
     ]);
     res.json({ user: serializeUser(rows[0]) });
+  });
+
+  // This phone, so pushes can reach it. Sent after every sign-in and whenever
+  // Firebase gives the app a new token; the same token may move between
+  // accounts if two people use one phone.
+  router.post('/me/devices', async (req, res) => {
+    const { token, platform } = deviceRegistration.parse(req.body);
+    await pool.query(
+      `insert into device_tokens (user_id, token, platform) values ($1, $2, $3)
+       on conflict (token) do update set user_id = excluded.user_id, platform = excluded.platform,
+                                         last_seen_at = now()`,
+      [req.user.id, token, platform],
+    );
+    res.status(204).end();
+  });
+
+  // Signing out: stop pushing to this phone.
+  router.delete('/me/devices', async (req, res) => {
+    const { token } = deviceRegistration.parse(req.body);
+    await pool.query('delete from device_tokens where token = $1 and user_id = $2', [token, req.user.id]);
+    res.status(204).end();
   });
 
   // Delete the account and everything in it, photos included.

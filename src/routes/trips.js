@@ -13,7 +13,7 @@ const COLUMNS = {
   coverPhotoId: 'cover_photo_id',
 };
 
-export function tripsRouter({ pool, storage }) {
+export function tripsRouter({ pool, storage, notifier }) {
   const router = Router();
 
   async function oneTrip(user, tripId) {
@@ -108,6 +108,20 @@ export function tripsRouter({ pool, storage }) {
        returning id`,
       [tripId, email, joined, req.user.id],
     );
+
+    // Tell them, on their phone. Someone without an account yet is told when
+    // they sign in and the invitation is claimed (src/routes/auth.js).
+    if (rows[0] && joined) {
+      const { rows: trips } = await pool.query('select title from trips where id = $1', [tripId]);
+      await notifier?.notify({
+        userId: joined,
+        kind: 'trip_shared',
+        title: `${req.user.name} added you to a trip`,
+        body: `You can now see "${trips[0].title}" and add your own memories to it.`,
+        tripId,
+        actorId: req.user.id,
+      });
+    }
     res.status(rows[0] ? 201 : 200).json({ members: await loadMembers(pool, tripId) });
   });
 

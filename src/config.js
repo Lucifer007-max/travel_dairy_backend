@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { parseServiceAccount } from './notify.js';
+
 const flag = z.enum(['true', 'false']).default('false').transform((v) => v === 'true');
 const list = z
   .string()
@@ -33,6 +35,11 @@ const schema = z
 
     CORS_ORIGINS: list,
 
+    // Optional: push notifications. The service account JSON from Firebase →
+    // Project settings → Service accounts (or that JSON base64-encoded).
+    // Without it, notifications are still recorded and shown in the app.
+    FIREBASE_SERVICE_ACCOUNT: z.string().optional(),
+
     // Set by Vercel on its servers.
     VERCEL: z.string().optional(),
   })
@@ -52,6 +59,13 @@ const schema = z
         path: ['STORAGE_DRIVER'],
         message: 'must be "supabase" on Vercel (its file system is read-only); also set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY',
       });
+    }
+    if (c.FIREBASE_SERVICE_ACCOUNT?.trim()) {
+      try {
+        parseServiceAccount(c.FIREBASE_SERVICE_ACCOUNT);
+      } catch (err) {
+        ctx.addIssue({ code: 'custom', path: ['FIREBASE_SERVICE_ACCOUNT'], message: err.message });
+      }
     }
     if (c.SUPABASE_SERVICE_ROLE_KEY && isPublicSupabaseKey(c.SUPABASE_SERVICE_ROLE_KEY)) {
       ctx.addIssue({

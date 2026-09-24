@@ -6,12 +6,14 @@ import { pinoHttp } from 'pino-http';
 
 import { createTokens } from './auth/tokens.js';
 import { notFound } from './errors.js';
+import { createNotifier } from './notify.js';
 import { requireUser } from './middleware/auth.js';
 import { errorHandler } from './middleware/errors.js';
 import { authRouter } from './routes/auth.js';
 import { filesRouter } from './routes/files.js';
 import { meRouter } from './routes/me.js';
 import { memoriesRouter } from './routes/memories.js';
+import { notificationsRouter } from './routes/notifications.js';
 import { tripsRouter } from './routes/trips.js';
 
 /**
@@ -21,7 +23,8 @@ import { tripsRouter } from './routes/trips.js';
 export function createApp({ config, pool, storage, verifyGoogleIdToken, logger }) {
   const app = express();
   const tokens = createTokens(config);
-  const deps = { config, pool, storage, tokens, verifyGoogleIdToken };
+  const notifier = createNotifier({ config, pool, logger });
+  const deps = { config, pool, storage, tokens, verifyGoogleIdToken, notifier };
 
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
@@ -37,6 +40,7 @@ export function createApp({ config, pool, storage, verifyGoogleIdToken, logger }
     res.json({
       ok: true,
       storage: storage.driver,
+      push: notifier.enabled,
       ...(storage.driver === 'supabase'
         ? { bucket: config.SUPABASE_BUCKET, project: new URL(config.SUPABASE_URL).hostname }
         : {}),
@@ -60,6 +64,7 @@ export function createApp({ config, pool, storage, verifyGoogleIdToken, logger }
   v1.use(meRouter(deps));
   v1.use(tripsRouter(deps));
   v1.use(memoriesRouter(deps));
+  v1.use(notificationsRouter(deps));
   app.use('/v1', v1);
 
   app.use((req) => {
