@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { loadConfig } from '../src/config.js';
-import { parseServiceAccount } from '../src/notify.js';
+import { describeServiceAccountSetting, parseServiceAccount } from '../src/notify.js';
 import { detectImageType } from '../src/storage/images.js';
 
 const base = { DATABASE_URL: 'postgres://localhost/x', JWT_SECRET: 'x'.repeat(32) };
@@ -68,6 +68,18 @@ test('the Firebase service account is checked at startup, in either form', () =>
 
   assert.doesNotThrow(() => loadConfig({ ...base, FIREBASE_SERVICE_ACCOUNT: json }));
   assert.throws(() => loadConfig({ ...base, FIREBASE_SERVICE_ACCOUNT: '{}' }), /FIREBASE_SERVICE_ACCOUNT/);
+});
+
+test('a deployment can describe its push setting without showing it', () => {
+  const key = { type: 'service_account', project_id: 'td', client_email: 'a@b.iam', private_key: 'k' };
+  assert.equal(describeServiceAccountSetting(''), 'not set (push is off)');
+  assert.equal(describeServiceAccountSetting(JSON.stringify(key)), 'the service account for project td');
+  assert.equal(
+    describeServiceAccountSetting(Buffer.from(JSON.stringify({ project_info: {} })).toString('base64')),
+    "google-services.json, which is the app's file, not the API's",
+  );
+  assert.match(describeServiceAccountSetting('half-a-key'), /not JSON, and not base64/);
+  assert.match(describeServiceAccountSetting(JSON.stringify({ ...key, private_key: '' })), /missing private_key/);
 });
 
 test('image types are recognised from their bytes', () => {

@@ -1,4 +1,5 @@
 import { buildApp } from '../src/bootstrap.js';
+import { describeServiceAccountSetting } from '../src/notify.js';
 
 // Vercel runs the API as a function. Build it once per instance, then hand
 // every request to Express. If the settings are wrong, answer each request
@@ -25,8 +26,16 @@ export default function handler(req, res) {
         // Which deployment this is: a variable added for Production only is
         // missing on preview deployments. Add it for every environment and redeploy.
         environment: process.env.VERCEL_ENV ?? 'unknown',
-        settingsSeen: ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'DATABASE_URL', 'JWT_SECRET', 'GOOGLE_CLIENT_IDS']
-          .filter((k) => process.env[k]),
+        settingsSeen: [
+          'SUPABASE_URL',
+          'SUPABASE_SERVICE_ROLE_KEY',
+          'DATABASE_URL',
+          'JWT_SECRET',
+          'GOOGLE_CLIENT_IDS',
+          'FIREBASE_SERVICE_ACCOUNT',
+        ].filter((k) => process.env[k]),
+        // What the push setting holds, described rather than shown.
+        firebaseServiceAccount: describeServiceAccountSetting(process.env.FIREBASE_SERVICE_ACCOUNT),
       },
     }),
   );

@@ -45,6 +45,27 @@ export function parseServiceAccount(raw) {
   return { projectId, clientEmail, privateKey: privateKey.replaceAll('\\n', '\n') };
 }
 
+/**
+ * What FIREBASE_SERVICE_ACCOUNT actually holds, in words — so a deployment can
+ * say why it refused it without ever printing the value. Names and a project id
+ * only; nothing secret.
+ */
+export function describeServiceAccountSetting(raw) {
+  if (!raw?.trim()) return 'not set (push is off)';
+  let json;
+  try {
+    json = JSON.parse(raw.trim().startsWith('{') ? raw : Buffer.from(raw, 'base64').toString('utf8'));
+  } catch {
+    return `not JSON, and not base64-encoded JSON (${raw.trim().length} characters)`;
+  }
+  if (json.project_info || json.client) return 'google-services.json, which is the app\'s file, not the API\'s';
+  if (json.type !== 'service_account') return `JSON with keys: ${Object.keys(json).slice(0, 8).join(', ')}`;
+  const missing = ['project_id', 'client_email', 'private_key'].filter((k) => !json[k]);
+  return missing.length
+    ? `a service account missing ${missing.join(' and ')}`
+    : `the service account for project ${json.project_id}`;
+}
+
 export const serializeNotification = (n) => ({
   id: n.id,
   kind: n.kind,
