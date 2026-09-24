@@ -24,9 +24,22 @@ export function parseServiceAccount(raw) {
   } catch {
     throw new Error('FIREBASE_SERVICE_ACCOUNT must be the service account JSON (or that JSON base64-encoded).');
   }
+  // The app's google-services.json is the file people reach for first; it is
+  // the wrong one and says nothing about why, so name it.
+  if (json.project_info || json.client) {
+    throw new Error(
+      'FIREBASE_SERVICE_ACCOUNT holds google-services.json — that file belongs in the app ' +
+        '(android/app/), not here. The API needs the service account key: Firebase console → ' +
+        'Project settings → Service accounts → "Generate new private key", a file starting ' +
+        '{"type":"service_account",…}.',
+    );
+  }
   const { project_id: projectId, client_email: clientEmail, private_key: privateKey } = json;
   if (!projectId || !clientEmail || !privateKey) {
-    throw new Error('FIREBASE_SERVICE_ACCOUNT is missing project_id, client_email or private_key.');
+    throw new Error(
+      'FIREBASE_SERVICE_ACCOUNT is missing project_id, client_email or private_key. It must be the ' +
+        'service account key from Firebase console → Project settings → Service accounts.',
+    );
   }
   // Dashboards often store the key with the newlines escaped.
   return { projectId, clientEmail, privateKey: privateKey.replaceAll('\\n', '\n') };

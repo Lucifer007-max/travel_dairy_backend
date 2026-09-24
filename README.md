@@ -117,7 +117,9 @@ claimed.
 Push is optional — without it everything still works, people just see the notification the next
 time they open the app. To turn it on:
 
-1. Firebase console → **Project settings → Service accounts → Generate new private key**.
+1. Firebase console → **Project settings → Service accounts → Generate new private key**. This is
+   *not* `google-services.json` (that one belongs in the app, at `android/app/`); the right file
+   starts `{"type":"service_account",…}` and contains a `private_key`.
 2. Put that JSON in `FIREBASE_SERVICE_ACCOUNT`, on one line or base64-encoded (`base64 -i key.json`
    is easier to paste into Vercel). It is a **secret**: never commit it.
 3. `GET /health` then reports `"push": true`.

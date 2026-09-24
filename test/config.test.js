@@ -61,6 +61,10 @@ test('the Firebase service account is checked at startup, in either form', () =>
   assert.equal(parseServiceAccount(''), null, 'push is optional');
   assert.throws(() => parseServiceAccount('not json'), /must be the service account JSON/);
   assert.throws(() => parseServiceAccount('{"project_id":"td"}'), /missing project_id, client_email or private_key/);
+  // The app's own Firebase file is the easy mistake; the error must name it.
+  const appFile = JSON.stringify({ project_info: { project_number: '1' }, client: [] });
+  assert.throws(() => parseServiceAccount(appFile), /google-services\.json — that file belongs in the app/);
+  assert.throws(() => parseServiceAccount(Buffer.from(appFile).toString('base64')), /belongs in the app/);
 
   assert.doesNotThrow(() => loadConfig({ ...base, FIREBASE_SERVICE_ACCOUNT: json }));
   assert.throws(() => loadConfig({ ...base, FIREBASE_SERVICE_ACCOUNT: '{}' }), /FIREBASE_SERVICE_ACCOUNT/);
